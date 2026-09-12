@@ -2,11 +2,17 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>Crossy Road 3D - NYC Street Edition</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap');
 
-    * { box-sizing: border-box; user-select: none; }
+    * { 
+      box-sizing: border-box; 
+      user-select: none; 
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
     body, html {
       margin: 0;
       padding: 0;
@@ -15,11 +21,13 @@
       overflow: hidden;
       background: #0a0e14;
       font-family: 'Press Start 2P', monospace;
+      touch-action: none;
     }
     #canvas-container {
       width: 100vw;
       height: 100vh;
       display: block;
+      touch-action: none;
     }
     #hud {
       position: absolute;
@@ -75,31 +83,34 @@
       justify-content: center;
       pointer-events: auto;
       z-index: 100;
+      touch-action: auto;
     }
     #game-over-screen h1 {
-      font-size: 40px;
+      font-size: 32px;
       color: #ff3344;
       text-shadow: 4px 4px 0px #000;
       margin-bottom: 20px;
       text-align: center;
     }
     #game-over-screen p {
-      font-size: 14px;
+      font-size: 13px;
       color: #fff;
       line-height: 2;
       text-align: center;
       text-shadow: 2px 2px 0 #000;
+      margin: 4px 0;
     }
     .restart-btn {
       margin-top: 25px;
-      padding: 16px 28px;
+      padding: 16px 24px;
       font-family: inherit;
-      font-size: 14px;
+      font-size: 12px;
       color: #fff;
       background: #e67e22;
       border: none;
       box-shadow: 0 6px 0 #b35400, 0 8px 10px #000;
       cursor: pointer;
+      text-align: center;
     }
     .restart-btn:active {
       transform: translateY(4px);
@@ -126,7 +137,7 @@
       <div class="coin-icon"></div>
       <span id="coin-el">0</span>
     </div>
-    <div id="controls-hint">USE ARROW KEYS OR WASD TO HOP</div>
+    <div id="controls-hint">TAP TO HOP • SWIPE TO MOVE</div>
   </div>
 
   <div id="game-over-screen">
@@ -134,7 +145,7 @@
     <p>DISTANCE: <span id="final-score">0</span></p>
     <p>COINS COLLECTED: <span id="final-coins">0</span></p>
     <p>BEST RECORD: <span id="final-best">0</span></p>
-    <button class="restart-btn" id="restart-btn">SPACE OR TAP TO HOP AGAIN</button>
+    <button class="restart-btn" id="restart-btn">TAP TO HOP AGAIN</button>
   </div>
 
 <script>
@@ -145,7 +156,7 @@ const LANE_MIN_X = -HALF_COLS * TILE_SIZE;
 const LANE_MAX_X = HALF_COLS * TILE_SIZE;
 const CAR_COLORS = [0x1e3799, 0xb71540, 0x2c3e50, 0x4a69bd, 0x78e08f, 0x60a3bc];
 
-// Exact Building Palette requested: #33658A, #86BBD8, #2F4858, #011936, #465362, #82A3A1
+// Exact Building Palette: #33658A, #86BBD8, #2F4858, #011936, #465362, #82A3A1
 const TOWNHOUSE_COLORS = [
   { wall: '#33658A', trim: '#86BBD8', door: '#011936' },
   { wall: '#2F4858', trim: '#82A3A1', door: '#011936' },
@@ -173,7 +184,7 @@ let cameraCreepSpeed = 8;
 // Option B: Wandering Path Center Tracker
 let wanderingPathCenter = 0;
 
-// Subway Stations Tracker (Records 'entrance' and 'exit')
+// Subway Stations Tracker
 let subwayPositions = [];
 let isTransitRiding = false;
 
@@ -198,8 +209,14 @@ const playerState = {
 
 // Audio
 const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+function resumeAudioOnInteraction() {
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume();
+  }
+}
+
 function playTone(freq, duration, type='square', decay=true) {
-  if (audioCtx.state === 'suspended') audioCtx.resume();
+  resumeAudioOnInteraction();
   try {
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
@@ -288,6 +305,55 @@ function generateFacadeTexture(bgColor, winColor, cols=5, rows=10) {
   return new THREE.MeshLambertMaterial({ map: tex });
 }
 
+// Procedural Times Square Front Billboard Textures
+const billboardMaterials = [];
+function generateBillboardMaterials() {
+  const configs = [
+    { bg: '#f1c40f', border: '#e67e22', text: 'PHOTO', sub: 'CAMERA' },
+    { bg: '#e74c3c', border: '#ffffff', text: 'SHOES', sub: 'SPORT' },
+    { bg: '#3498db', border: '#ffffff', text: 'JAZZ', sub: 'NYC LIVE' },
+    { bg: '#9b59b6', border: '#f1c40f', text: 'CINEMA', sub: 'TONIGHT' },
+    { bg: '#e67e22', border: '#ffffff', text: 'PARIS', sub: 'PARFUM' }
+  ];
+
+  configs.forEach(cfg => {
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 128;
+    const ctx = c.getContext('2d');
+
+    ctx.fillStyle = cfg.border;
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.fillStyle = cfg.bg;
+    ctx.fillRect(6, 6, 116, 116);
+
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 4;
+    ctx.strokeRect(14, 14, 100, 100);
+
+    ctx.fillStyle = '#111';
+    ctx.font = 'bold 22px Arial, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(cfg.text, 64, 56);
+
+    ctx.font = 'bold 14px Arial, sans-serif';
+    ctx.fillText(cfg.sub, 64, 84);
+
+    const tex = new THREE.CanvasTexture(c);
+    tex.magFilter = THREE.NearestFilter;
+    tex.minFilter = THREE.NearestFilter;
+    billboardMaterials.push(new THREE.MeshLambertMaterial({ map: tex }));
+  });
+}
+generateBillboardMaterials();
+
+function attachFrontBillboard(buildingGroup, yPos, w=14, h=14) {
+  const mat = billboardMaterials[Math.floor(Math.random() * billboardMaterials.length)];
+  const bMesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.8), mat);
+  bMesh.position.set(0, yPos, -9.4);
+  buildingGroup.add(bMesh);
+}
+
 // Chicken Model
 function buildChicken() {
   const group = new THREE.Group();
@@ -330,7 +396,7 @@ function buildChicken() {
   return group;
 }
 
-// Townhouse (Updated Color Scheme)
+// Townhouse
 function buildTownhouse() {
   const group = new THREE.Group();
   const theme = TOWNHOUSE_COLORS[Math.floor(Math.random() * TOWNHOUSE_COLORS.length)];
@@ -354,10 +420,14 @@ function buildTownhouse() {
   door.position.set(0, 7.5, 9.2);
   group.add(stoop, door);
 
+  if (Math.random() < 0.45) {
+    attachFrontBillboard(group, height * 0.6, 12, 12);
+  }
+
   return group;
 }
 
-// Skyscraper (Updated Color Scheme)
+// Skyscraper
 function buildArtDecoSkyscraper() {
   const group = new THREE.Group();
   const theme = SKYSCRAPER_COLORS[Math.floor(Math.random() * SKYSCRAPER_COLORS.length)];
@@ -384,10 +454,14 @@ function buildArtDecoSkyscraper() {
   spire.rotation.y = Math.PI / 4;
   group.add(spire);
 
+  if (Math.random() < 0.65) {
+    attachFrontBillboard(group, 24 + Math.random() * 16, 15, 15);
+  }
+
   return group;
 }
 
-// SUBWAY STATION: ENTRANCE (Opens Bottom) vs EXIT (Opens Top)
+// Subway Station: Entrance vs Exit
 function buildSubwayStation(type = 'entrance') {
   const group = new THREE.Group();
   const mtaGreen = createMat(0x0e5a3c);
@@ -493,7 +567,7 @@ function buildRandomBuilding() {
   return Math.random() < 0.55 ? buildTownhouse() : buildArtDecoSkyscraper();
 }
 
-// Normal Passenger Car & Yellow Taxi
+// Vehicles
 function buildCityVehicle() {
   const group = new THREE.Group();
   const wheelMat = createMat(0x111111);
@@ -573,9 +647,8 @@ function createLane(gridZ) {
 
   let type = 'grass';
 
-  // Dynamic Car Speed Scaler: As chicken gets farther, cars get progressively faster!
   const progressFactor = Math.max(0, gridZ);
-  const difficultyBoost = 1 + (progressFactor * 0.035); // Steeper progression curve
+  const difficultyBoost = 1 + (progressFactor * 0.035);
 
   if (gridZ > 3) {
     type = (Math.random() < 0.6) ? 'road' : 'grass';
@@ -694,7 +767,6 @@ function createLane(gridZ) {
       laneGroup.add(dash);
     }
 
-    // Faster speed calculation scaling up with distance
     const baseSpeed = Math.random() * 40 + 45;
     laneData.speed = (baseSpeed * difficultyBoost) * (Math.random() < 0.5 ? 1 : -1);
 
@@ -803,7 +875,8 @@ function init() {
   scene.fog = new THREE.Fog(0x131a22, 340, 720);
 
   const aspect = window.innerWidth / window.innerHeight;
-  const d = 145;
+  // Increase frustum slightly on narrow portrait phones to frame lanes comfortably
+  const d = (window.innerWidth < 600) ? 175 : 145;
   camera = new THREE.OrthographicCamera(-d * aspect, d * aspect, d, -d, 1, 1500);
 
   camera.position.set(0, 250, -150);
@@ -817,7 +890,8 @@ function init() {
   dirLight.castShadow = true;
   scene.add(dirLight);
 
-  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -830,6 +904,7 @@ function init() {
 
   resetGame();
   setupEvents();
+  setupTouchEvents();
   animate();
 }
 
@@ -935,6 +1010,7 @@ function hop(dx, dz) {
   }
 }
 
+// Keyboard & Window Resize
 function setupEvents() {
   window.addEventListener('keydown', (e) => {
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
@@ -951,11 +1027,14 @@ function setupEvents() {
     else if (e.key === 'ArrowRight' || e.key === 'd' || e.key === 'D') hop(-1, 0);
   });
 
-  document.getElementById('restart-btn').addEventListener('click', resetGame);
+  document.getElementById('restart-btn').addEventListener('click', (e) => {
+    e.stopPropagation();
+    resetGame();
+  });
 
   window.addEventListener('resize', () => {
     const aspect = window.innerWidth / window.innerHeight;
-    const d = 145;
+    const d = (window.innerWidth < 600) ? 175 : 145;
     camera.left = -d * aspect;
     camera.right = d * aspect;
     camera.top = d;
@@ -963,6 +1042,57 @@ function setupEvents() {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
+}
+
+// --- MOBILE TOUCH CONTROLS (Swipe & Tap) ---
+function setupTouchEvents() {
+  let touchStartX = 0;
+  let touchStartY = 0;
+  let touchStartTime = 0;
+
+  window.addEventListener('touchstart', (e) => {
+    resumeAudioOnInteraction();
+    if (e.touches.length > 0) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+      touchStartTime = performance.now();
+    }
+  }, { passive: false });
+
+  window.addEventListener('touchend', (e) => {
+    if (isGameOver) return; // Restart button handles touch restart
+
+    if (e.changedTouches.length > 0) {
+      const touchEndX = e.changedTouches[0].clientX;
+      const touchEndY = e.changedTouches[0].clientY;
+      const dx = touchEndX - touchStartX;
+      const dy = touchEndY - touchStartY;
+      const dt = performance.now() - touchStartTime;
+
+      const absX = Math.abs(dx);
+      const absY = Math.abs(dy);
+      const swipeDistanceThreshold = 24;
+
+      if (absX < swipeDistanceThreshold && absY < swipeDistanceThreshold && dt < 300) {
+        // Simple tap: Hop forward
+        hop(0, 1);
+      } else if (absX > absY) {
+        // Horizontal Swipe
+        if (dx > swipeDistanceThreshold) {
+          hop(-1, 0); // Right hop
+        } else if (dx < -swipeDistanceThreshold) {
+          hop(1, 0);  // Left hop
+        }
+      } else {
+        // Vertical Swipe
+        if (dy < -swipeDistanceThreshold) {
+          hop(0, 1);  // Swipe up: forward
+        } else if (dy > swipeDistanceThreshold) {
+          hop(0, -1); // Swipe down: backward
+        }
+      }
+    }
+  }, { passive: false });
 }
 
 function triggerGameOver(reason="CRUSHED!") {
